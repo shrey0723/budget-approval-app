@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Budget Approval Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+  :root{
+    --bg:#F7F8FA;
+    --panel:#FFFFFF;
+    --ink:#151A23;
+    --muted:#5B6472;
+    --line:#E4E7EC;
+    --accent:#1F5EFF;
+    --accent-soft:#EAF0FF;
+    --good:#0E8A5F;
+    --good-soft:#E6F6EF;
+    --bad:#C4402C;
+    --bad-soft:#FCEAE7;
+    --wait:#B7791F;
+    --wait-soft:#FBF1DF;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+  }
+  #root{min-height:100vh;}
+  .shell{max-width:1080px;margin:0 auto;padding:32px 24px 64px;}
+  header.top{
+    display:flex; align-items:flex-start; justify-content:space-between;
+    margin-bottom:28px; gap:16px; flex-wrap:wrap;
+  }
+  .brand-mark{
+    width:38px;height:38px;border-radius:9px;
+    background:linear-gradient(135deg,var(--accent),#0F3FCC);
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-weight:700;font-size:15px;flex-shrink:0;
+  }
+  .brand{display:flex;align-items:center;gap:12px;}
+  h1{font-size:19px;margin:0;letter-spacing:-0.01em;}
+  .sub{color:var(--muted);font-size:13px;margin-top:2px;}
+  .role-toggle{
+    display:flex;background:var(--panel);border:1px solid var(--line);
+    border-radius:999px;padding:3px;gap:2px;
+  }
+  .role-toggle button{
+    border:none;background:transparent;padding:7px 16px;border-radius:999px;
+    font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;
+    transition:all .15s ease;
+  }
+  .role-toggle button.active{background:var(--ink);color:#fff;}
+
+  .grid-top{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
+  @media (max-width:760px){.grid-top{grid-template-columns:repeat(2,1fr);}}
+  .stat{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 16px;
+  }
+  .stat .label{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;}
+  .stat .value{font-size:22px;font-weight:700;margin-top:6px;letter-spacing:-0.01em;}
+  .stat.status-approved .value{color:var(--good);}
+  .stat.status-pending .value{color:var(--wait);}
+  .stat.status-rejected .value{color:var(--bad);}
+
+  .panels{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-bottom:24px;}
+  @media (max-width:860px){.panels{grid-template-columns:1fr;}}
+  .panel{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px 20px;
+  }
+  .panel h2{font-size:14px;margin:0 0 14px;font-weight:700;}
+  .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+  .bar-row .bar-label{width:92px;font-size:12.5px;color:var(--muted);flex-shrink:0;}
+  .bar-track{flex:1;background:#EEF1F5;border-radius:6px;height:18px;overflow:hidden;}
+  .bar-fill{height:100%;background:var(--accent);border-radius:6px;transition:width .5s ease;}
+  .bar-amount{width:74px;text-align:right;font-size:12.5px;font-weight:600;flex-shrink:0;}
+
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .form-grid label{grid-column:span 2;font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:-4px;}
+  input,select,textarea{
+    font-family:inherit;font-size:13.5px;padding:9px 10px;border:1px solid var(--line);
+    border-radius:7px;background:#fff;color:var(--ink);width:100%;
+  }
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent);}
+  textarea{grid-column:span 2;resize:vertical;min-height:52px;}
+  .full{grid-column:span 2;}
+  .submit-btn{
+    grid-column:span 2;background:var(--ink);color:#fff;border:none;border-radius:7px;
+    padding:10px 14px;font-size:13.5px;font-weight:600;cursor:pointer;margin-top:2px;
+  }
+  .submit-btn:hover{background:#000;}
+  .submit-btn:disabled{opacity:.5;cursor:not-allowed;}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{
+    text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--muted);font-weight:600;border-bottom:1px solid var(--line);padding:0 10px 8px;
+  }
+  tbody td{padding:11px 10px;border-bottom:1px solid #F0F1F4;vertical-align:middle;}
+  tbody tr:last-child td{border-bottom:none;}
+  .title-cell .t-main{font-weight:600;}
+  .title-cell .t-sub{color:var(--muted);font-size:11.5px;margin-top:1px;}
+  .badge{
+    display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;
+  }
+  .badge.Approved{background:var(--good-soft);color:var(--good);}
+  .badge.Pending{background:var(--wait-soft);color:var(--wait);}
+  .badge.Rejected{background:var(--bad-soft);color:var(--bad);}
+  .actions button{
+    border:1px solid var(--line);background:#fff;border-radius:6px;padding:5px 10px;
+    font-size:12px;font-weight:600;cursor:pointer;margin-right:6px;
+  }
+  .actions .approve{color:var(--good);border-color:#CBEBDA;}
+  .actions .reject{color:var(--bad);border-color:#F3D2CB;}
+  .actions button:hover{filter:brightness(0.97);}
+  .filters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .filters select{width:auto;font-size:12.5px;padding:7px 9px;}
+  .empty{color:var(--muted);font-size:13px;padding:20px 0;text-align:center;}
+  .toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;
+    box-shadow:0 8px 24px rgba(0,0,0,.18);
+  }
+  .footer-note{color:var(--muted);font-size:11.5px;margin-top:26px;text-align:center;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+const API = "http://localhost:5000/api";
+
+function currency(n){
+  return "$" + Number(n).toLocaleString(undefined, {maximumFractionDigits:0});
+}
+
+function StatCard({label, value, cls}){
+  return (
+    <div className={"stat " + (cls||"")}>
+      <div className="label">{label}</div>
+      <div className="value">{value}</div>
+    </div>
+  );
+}
+
+function BarList({data, keyName}){
+  const max = Math.max(1, ...data.map(d => d.total));
+  if(data.length === 0) return <div className="empty">No approved spend yet</div>;
+  return data.map(d => (
+    <div className="bar-row" key={d[keyName]}>
+      <div className="bar-label">{d[keyName]}</div>
+      <div className="bar-track">
+        <div className="bar-fill" style={{width: (d.total/max*100) + "%"}}></div>
+      </div>
+      <div className="bar-amount">{currency(d.total)}</div>
+    </div>
+  ));
+}
+
+function NewExpenseForm({onCreated, submittedBy}){
+  const [form, setForm] = useState({title:"", amount:"", department:"Engineering", category:"Software", justification:""});
+  const [busy, setBusy] = useState(false);
+
+  const update = (k,v) => setForm(f => ({...f, [k]: v}));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if(!form.title || !form.amount) return;
+    setBusy(true);
+    try{
+      await fetch(API + "/expenses", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({...form, amount: parseFloat(form.amount), submitted_by: submittedBy})
+      });
+      setForm({title:"", amount:"", department:"Engineering", category:"Software", justification:""});
+      onCreated();
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <form className="form-grid" onSubmit={submit}>
+      <label className="full">Request title</label>
+      <input className="full" placeholder="e.g. New monitors for QA team"
+        value={form.title} onChange={e=>update("title", e.target.value)} required />
+
+      <label>Amount (USD)</label>
+      <input type="number" min="0" step="1" placeholder="1500"
+        value={form.amount} onChange={e=>update("amount", e.target.value)} required />
+      <div></div>
+
+      <label>Department</label>
+      <select value={form.department} onChange={e=>update("department", e.target.value)}>
+        {["Engineering","Design","Marketing","HR","Finance","Sales"].map(d=><option key={d}>{d}</option>)}
+      </select>
+
+      <label>Category</label>
+      <select value={form.category} onChange={e=>update("category", e.target.value)}>
+        {["Software","Equipment","Travel","Advertising","Events","Training"].map(c=><option key={c}>{c}</option>)}
+      </select>
+
+      <label className="full">Justification (optional)</label>
+      <textarea placeholder="Why is this needed?" value={form.justification}
+        onChange={e=>update("justification", e.target.value)} />
+
+      <button className="submit-btn" disabled={busy}>{busy ? "Submitting..." : "Submit request"}</button>
+    </form>
+  );
+}
+
+function App(){
+  const [role, setRole] = useState("Employee"); // Employee | Manager
+  const [user] = useState("you@company.com");
+  const [expenses, setExpenses] = useState([]);
+  const [agg, setAgg] = useState({by_department:[], by_category:[], by_status:[]});
+  const [statusFilter, setStatusFilter] = useState("");
+  const [deptFilter, setDeptFilter] = useState("");
+  const [toast, setToast] = useState(null);
+
+  const load = useCallback(async () => {
+    const params = new URLSearchParams();
+    if(statusFilter) params.set("status", statusFilter);
+    if(deptFilter) params.set("department", deptFilter);
+    const [expRes, aggRes] = await Promise.all([
+      fetch(API + "/expenses?" + params.toString()).then(r=>r.json()).catch(()=>[]),
+      fetch(API + "/aggregate").then(r=>r.json()).catch(()=>({by_department:[],by_category:[],by_status:[]}))
+    ]);
+    setExpenses(expRes);
+    setAgg(aggRes);
+  }, [statusFilter, deptFilter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(null), 2000); };
+
+  const setStatus = async (id, status) => {
+    await fetch(`${API}/expenses/${id}/status`, {
+      method:"PATCH",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({status})
+    });
+    showToast(`Request ${status.toLowerCase()}`);
+    load();
+  };
+
+  const statusCounts = {Approved:0, Pending:0, Rejected:0};
+  agg.by_status.forEach(s => statusCounts[s.status] = s.count);
+  const totalApproved = agg.by_status.find(s=>s.status==="Approved")?.total || 0;
+
+  return (
+    <div className="shell">
+      <header className="top">
+        <div className="brand">
+          <div className="brand-mark">BA</div>
+          <div>
+            <h1>Budget Approval Dashboard</h1>
+            <div className="sub">Internal tool &middot; departmental expense requests &amp; sign-off</div>
+          </div>
+        </div>
+        <div className="role-toggle">
+          <button className={role==="Employee"?"active":""} onClick={()=>setRole("Employee")}>Employee view</button>
+          <button className={role==="Manager"?"active":""} onClick={()=>setRole("Manager")}>Manager view</button>
+        </div>
+      </header>
+
+      <div className="grid-top">
+        <StatCard label="Total approved spend" value={currency(totalApproved)} />
+        <StatCard label="Approved" value={statusCounts.Approved} cls="status-approved" />
+        <StatCard label="Pending" value={statusCounts.Pending} cls="status-pending" />
+        <StatCard label="Rejected" value={statusCounts.Rejected} cls="status-rejected" />
+      </div>
+
+      <div className="panels">
+        <div className="panel">
+          <h2>Approved spend by department</h2>
+          <BarList data={agg.by_department} keyName="department" />
+        </div>
+        <div className="panel">
+          {role === "Employee" ? (
+            <>
+              <h2>New request</h2>
+              <NewExpenseForm submittedBy={user} onCreated={() => { showToast("Request submitted"); load(); }} />
+            </>
+          ) : (
+            <>
+              <h2>Approved spend by category</h2>
+              <BarList data={agg.by_category} keyName="category" />
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="panel">
+        <h2>{role === "Manager" ? "Requests awaiting review" : "All requests"}</h2>
+        <div className="filters">
+          <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+            <option value="">All statuses</option>
+            <option>Pending</option><option>Approved</option><option>Rejected</option>
+          </select>
+          <select value={deptFilter} onChange={e=>setDeptFilter(e.target.value)}>
+            <option value="">All departments</option>
+            {["Engineering","Design","Marketing","HR","Finance","Sales"].map(d=><option key={d}>{d}</option>)}
+          </select>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Request</th><th>Department</th><th>Category</th><th>Amount</th>
+              <th>Status</th>{role==="Manager" && <th>Actions</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {expenses.length === 0 && (
+              <tr><td colSpan="6"><div className="empty">No requests match these filters</div></td></tr>
+            )}
+            {expenses.map(x => (
+              <tr key={x.id}>
+                <td className="title-cell">
+                  <div className="t-main">{x.title}</div>
+                  <div className="t-sub">by {x.submitted_by}</div>
+                </td>
+                <td>{x.department}</td>
+                <td>{x.category}</td>
+                <td>{currency(x.amount)}</td>
+                <td><span className={"badge " + x.status}>{x.status}</span></td>
+                {role === "Manager" && (
+                  <td className="actions">
+                    {x.status !== "Approved" && <button className="approve" onClick={()=>setStatus(x.id,"Approved")}>Approve</button>}
+                    {x.status !== "Rejected" && <button className="reject" onClick={()=>setStatus(x.id,"Rejected")}>Reject</button>}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="footer-note">Demo data &middot; Flask REST API + SQLite &middot; React frontend</div>
+      {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
