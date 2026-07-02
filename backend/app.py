@@ -1,36 +1,21 @@
-"""
-Internal Expense / Budget Approval Dashboard - Backend
---------------------------------------------------------
-A small REST API demonstrating:
-- CRUD endpoints
-- Role-based approval workflow (Employee submits, Manager approves/rejects)
-- Data aggregation endpoint (spend by department / category) for dashboard charts
-
-Run:
-    pip install -r requirements.txt
-    python app.py
-
-Server runs on http://localhost:5000
-"""
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import os
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "expenses.db")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 app = Flask(__name__)
-CORS(app)  # allow the React frontend (different port) to call this API
+CORS(app)
 
 
 # ---------------------------------------------------------------------------
 # Database helpers
 # ---------------------------------------------------------------------------
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(DATABASE_URL)
     return conn
 
 
@@ -39,7 +24,7 @@ def init_db():
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS expenses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             title TEXT NOT NULL,
             amount REAL NOT NULL,
             department TEXT NOT NULL,
@@ -52,7 +37,6 @@ def init_db():
     """)
     conn.commit()
 
-    # Seed with sample data if the table is empty (nice for demo/screenshots)
     cur.execute("SELECT COUNT(*) FROM expenses")
     if cur.fetchone()[0] == 0:
         sample = [
@@ -65,9 +49,10 @@ def init_db():
         ]
         cur.executemany("""
             INSERT INTO expenses (title, amount, department, category, justification, status, submitted_by, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, sample)
         conn.commit()
+    cur.close()
     conn.close()
 
 
@@ -95,7 +80,6 @@ def health():
 
 @app.route("/api/expenses", methods=["GET"])
 def list_expenses():
-    """List expenses, with optional filters: department, status, category."""
     department = request.args.get("department")
     status = request.args.get("status")
     category = request.args.get("category")
@@ -103,25 +87,27 @@ def list_expenses():
     query = "SELECT * FROM expenses WHERE 1=1"
     params = []
     if department:
-        query += " AND department = ?"
+        query += " AND department = %s"
         params.append(department)
     if status:
-        query += " AND status = ?"
+        query += " AND status = %s"
         params.append(status)
     if category:
-        query += " AND category = ?"
+        query += " AND category = %s"
         params.append(category)
     query += " ORDER BY created_at DESC"
 
     conn = get_db()
-    rows = conn.execute(query, params).fetchall()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    cur.close()
     conn.close()
     return jsonify([row_to_dict(r) for r in rows])
 
 
 @app.route("/api/expenses", methods=["POST"])
 def create_expense():
-    """Submit a new expense request (Employee action)."""
     data = request.get_json(force=True)
     required = ["title", "amount", "department", "category", "submitted_by"]
     missing = [f for f in required if not data.get(f)]
@@ -132,7 +118,8 @@ def create_expense():
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO expenses (title, amount, department, category, justification, status, submitted_by, created_at)
-        VALUES (?, ?, ?, ?, ?, 'Pending', ?, ?)
+        VALUES (%s, %s, %s, %s, %s, 'Pending', %s, %s)
+        RETURNING id
     """, (
         data["title"],
         float(data["amount"]),
@@ -142,15 +129,15 @@ def create_expense():
         data["submitted_by"],
         datetime.utcnow().isoformat(),
     ))
+    new_id = cur.fetchone()[0]
     conn.commit()
-    new_id = cur.lastrowid
+    cur.close()
     conn.close()
     return jsonify({"message": "Expense submitted", "id": new_id}), 201
 
 
 @app.route("/api/expenses/<int:expense_id>/status", methods=["PATCH"])
 def update_status(expense_id):
-    """Approve or reject an expense (Manager action)."""
     data = request.get_json(force=True)
     new_status = data.get("status")
     if new_status not in ("Approved", "Rejected", "Pending"):
@@ -158,9 +145,10 @@ def update_status(expense_id):
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("UPDATE expenses SET status = ? WHERE id = ?", (new_status, expense_id))
-    conn.commit()
+    cur.execute("UPDATE expenses SET status = %s WHERE id = %s", (new_status, expense_id))
     affected = cur.rowcount
+    conn.commit()
+    cur.close()
     conn.close()
 
     if affected == 0:
@@ -172,9 +160,10 @@ def update_status(expense_id):
 def delete_expense(expense_id):
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
-    conn.commit()
+    cur.execute("DELETE FROM expenses WHERE id = %s", (expense_id,))
     affected = cur.rowcount
+    conn.commit()
+    cur.close()
     conn.close()
     if affected == 0:
         return jsonify({"error": "Expense not found"}), 404
@@ -183,35 +172,30 @@ def delete_expense(expense_id):
 
 @app.route("/api/aggregate", methods=["GET"])
 def aggregate():
-    """
-    Aggregation endpoint powering the dashboard chart:
-    total spend by department, and by category, for Approved expenses.
-    This is the 'data pipeline / aggregation' evidence for the resume.
-    """
     conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    by_department = conn.execute("""
-        SELECT department, ROUND(SUM(amount), 2) AS total
-        FROM expenses
-        WHERE status = 'Approved'
-        GROUP BY department
-        ORDER BY total DESC
-    """).fetchall()
+    cur.execute("""
+        SELECT department, ROUND(CAST(SUM(amount) AS numeric), 2) AS total
+        FROM expenses WHERE status = 'Approved'
+        GROUP BY department ORDER BY total DESC
+    """)
+    by_department = cur.fetchall()
 
-    by_category = conn.execute("""
-        SELECT category, ROUND(SUM(amount), 2) AS total
-        FROM expenses
-        WHERE status = 'Approved'
-        GROUP BY category
-        ORDER BY total DESC
-    """).fetchall()
+    cur.execute("""
+        SELECT category, ROUND(CAST(SUM(amount) AS numeric), 2) AS total
+        FROM expenses WHERE status = 'Approved'
+        GROUP BY category ORDER BY total DESC
+    """)
+    by_category = cur.fetchall()
 
-    by_status = conn.execute("""
-        SELECT status, COUNT(*) AS count, ROUND(SUM(amount), 2) AS total
-        FROM expenses
-        GROUP BY status
-    """).fetchall()
+    cur.execute("""
+        SELECT status, COUNT(*) AS count, ROUND(CAST(SUM(amount) AS numeric), 2) AS total
+        FROM expenses GROUP BY status
+    """)
+    by_status = cur.fetchall()
 
+    cur.close()
     conn.close()
 
     return jsonify({
@@ -221,6 +205,7 @@ def aggregate():
     })
 
 
+init_db()
+
 if __name__ == "__main__":
-    init_db()
     app.run(debug=True, port=5000)
